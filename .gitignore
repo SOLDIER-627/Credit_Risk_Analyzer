@@ -1,0 +1,45 @@
+# ==================== #
+# R语言相关忽略规则 #
+# ==================== #
+
+# R历史文件
+.Rhistory
+.Rapp.history
+
+# R工作空间
+.RData
+.Ruserdata
+.Rproj.user/
+
+# RStudio文件
+.Rproj
+*.Rproj
+
+# 临时文件
+*.Rt
+*.-
+*.tex
+
+# 包安装文件
+packrat/
+renv/
+
+# ==================== #
+# Python相关忽略规则 #
+# ==================== #
+
+# Python缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# 安装包
+*.egg
+*.egg-info/
+dist/
+build/
