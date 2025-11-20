@@ -4,6 +4,46 @@
 # 加载配置
 source("code/00_config.R")
 
+# 函数：数据归一化/标准化
+normalize_features <- function(train_data, test_data, variables) {
+  # 对特征进行标准化处理 (Z-score standardization)
+  # 参数：train_data - 训练集, test_data - 测试集, variables - 需要归一化的特征名
+  # 返回：归一化后的训练集、测试集和预处理对象
+  
+  cat("\n=== 数据归一化 (Standardization) ===\n")
+  
+  # 确保依赖包已加载
+  if (!requireNamespace("caret", quietly = TRUE)) {
+    stop("请安装 'caret' 包以进行数据预处理")
+  }
+  
+  # 1. 基于训练集计算均值和标准差 (建立规则)
+  # method = c("center", "scale") 意味着 (x - mean) / sd
+  pre_proc_values <- caret::preProcess(train_data[, variables], method = c("center", "scale"))
+  
+  cat("归一化规则已基于训练集建立 (Center & Scale)\n")
+  
+  # 2. 将规则应用到训练集
+  train_norm <- train_data
+  train_norm[, variables] <- predict(pre_proc_values, train_data[, variables])
+  
+  # 3. 将规则应用到测试集 (注意：这里必须使用训练集的规则，不能重新计算)
+  test_norm <- test_data
+  test_norm[, variables] <- predict(pre_proc_values, test_data[, variables])
+  
+  cat("数据转换完成\n")
+  cat("- 训练集特征均值 (预览): ", round(mean(train_norm[, variables[1]]), 4), 
+      " (应接近0)\n")
+  cat("- 训练集特征标准差 (预览): ", round(sd(train_norm[, variables[1]]), 4), 
+      " (应接近1)\n")
+  
+  return(list(
+    train = train_norm, 
+    test = test_norm, 
+    scaler = pre_proc_values
+  ))
+}
+
 # 函数：加载预处理数据和相关性结果
 load_data_and_correlations <- function() {
   # 加载附件1处理后的数据和相关性分析结果
@@ -77,7 +117,7 @@ select_modeling_variables <- function(data, cor_results, top_n = 8) {
 }
 
 # 函数：分割训练集和测试集
-split_train_test <- function(data, test_size = 0.2) {
+split_train_test <- function(data, test_size = 0.3) {
   # 分割数据为训练集和测试集
   # 参数：data - 数据, test_size - 测试集比例
   # 返回：训练集和测试集
@@ -315,6 +355,7 @@ cat("开始构建预测模型...\n\n")
 
 # 创建输出目录
 results_dir <- "results/prediction_model/"
+if (!dir.exists(results_dir)) dir.create(results_dir, recursive = TRUE)
 
 # 1. 加载数据和相关性结果
 loaded_data <- load_data_and_correlations()
@@ -328,19 +369,23 @@ modeling_data <- modeling_vars$data
 
 # 3. 分割训练集和测试集
 split_data <- split_train_test(modeling_data, test_size = 0.2)
-train_data <- split_data$train
-test_data <- split_data$test
 
-# 4. 训练逻辑回归模型
+# 4. 数据归一化
+norm_results <- normalize_features(split_data$train, split_data$test, selected_variables)
+train_data <- norm_results$train
+test_data <- norm_results$test
+scaler <- norm_results$scaler
+
+# 5. 训练逻辑回归模型 (使用归一化后的数据)
 logistic_model <- train_logistic_model(train_data, selected_variables)
 
-# 5. 模型评估
+# 6. 模型评估 (使用归一化后的测试集)
 eval_results <- evaluate_model(logistic_model, test_data, results_dir)
 
-# 6. 模型解释
+# 7. 模型解释
 coef_results <- interpret_model(logistic_model, selected_variables, results_dir)
 
-# 7. 生成报告
+# 8. 生成报告
 generate_model_report(
   model_results = list(
     variables = selected_variables,
@@ -352,15 +397,16 @@ generate_model_report(
   results_dir = results_dir
 )
 
-# 8. 保存模型
-saveRDS(logistic_model, paste0(results_dir, "logistic_regression_model.rds"))
-cat("\n模型已保存至:", paste0(results_dir, "logistic_regression_model.rds"), "\n")
+# 9. 保存模型和归一化器
+# 重要：必须同时保存 scaler，否则未来无法对新数据进行预测
+saveRDS(list(model = logistic_model, scaler = scaler), 
+        paste0(results_dir, "logistic_model_with_scaler.rds"))
+
+cat("\n模型与归一化器已保存至:", paste0(results_dir, "logistic_model_with_scaler.rds"), "\n")
 
 cat("\n=== 预测模型构建完成 ===\n")
 cat("主要输出文件:\n")
 cat("- roc_curve.png: ROC曲线\n")
 cat("- probability_distribution.png: 概率分布图\n")
-cat("- feature_importance.png: 特征重要性图\n")
-cat("- model_coefficients.csv: 模型系数\n")
-cat("- prediction_model_report.txt: 模型报告\n")
-cat("- logistic_regression_model.rds: 训练好的模型\n")
+cat("- feature_importance.png: 特征重要性图 (现在更准确了)\n")
+cat("- logistic_model_with_scaler.rds: 包含模型和预处理规则的文件\n")
