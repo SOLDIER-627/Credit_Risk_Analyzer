@@ -118,7 +118,8 @@ calculate_default_correlations <- function(analysis_data) {
       # 计算相关系数
       cor_value <- cor(analysis_data[[var]], 
                        analysis_data[["是否违约数值"]], 
-                       use = "complete.obs")
+                       use = "complete.obs",
+                       method = "spearman")
       
       # 判断相关性强度
       strength <- ifelse(abs(cor_value) >= 0.7, "强",
@@ -152,7 +153,7 @@ plot_comprehensive_correlation <- function(analysis_data, results_dir) {
   cat("\n=== 绘制相关性热力图 ===\n")
   
   # 计算相关系数矩阵
-  cor_matrix <- cor(analysis_data, use = "complete.obs")
+  cor_matrix <- cor(analysis_data, use = "complete.obs", method = "spearman")
   
   # 创建热力图
   p <- ggcorrplot(cor_matrix,
