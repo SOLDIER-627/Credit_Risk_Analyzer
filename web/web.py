@@ -4,17 +4,40 @@ from pathlib import Path
 
 # =============== 一些通用的小工具函数 ===============
 
+# def load_csv(path: str):
+#     """安全读取 CSV，不存在就给出提示。"""
+#     p = Path(path)
+#     if not p.exists():
+#         st.warning(f"找不到数据文件：{path}（请确认文件是否与 app.py 在同一目录下）")
+#         return None
+#     try:
+#         return pd.read_csv(p)
+#     except Exception as e:
+#         st.error(f"读取 {path} 失败：{e}")
+#         return None
 def load_csv(path: str):
-    """安全读取 CSV，不存在就给出提示。"""
     p = Path(path)
     if not p.exists():
         st.warning(f"找不到数据文件：{path}（请确认文件是否与 app.py 在同一目录下）")
         return None
-    try:
-        return pd.read_csv(p)
-    except Exception as e:
-        st.error(f"读取 {path} 失败：{e}")
-        return None
+
+    encodings_to_try = ["utf-8", "utf-8-sig", "gbk", "gb2312", "ansi", "latin1"]
+
+    last_err = None
+    for enc in encodings_to_try:
+        try:
+            df = pd.read_csv(p, encoding=enc)
+            st.caption(f"（已使用编码 `{enc}` 成功读取 {path}）")
+            return df
+        except UnicodeDecodeError as e:
+            last_err = e
+            continue
+        except Exception as e:
+            last_err = e
+            continue
+
+    st.error(f"读取 {path} 失败，尝试的编码有：{encodings_to_try}，最后一个错误：{last_err}")
+    return None
 
 
 def load_txt(path: str):
@@ -68,20 +91,20 @@ def page_overview():
         caption="信贷策略与整体流程可视化（示意）"
     )
 
-    st.markdown(
-        """
-        ### 四、页面导航说明
-
-        通过左侧侧边栏可以切换查看：
-
-        - **项目概览**：背景、目标与整体框架；
-        - **数据与预处理**：原始数据说明与特征构造步骤；
-        - **相关性分析**：各变量与违约关系的可视化与统计结果；
-        - **违约预测模型**：模型结构、性能指标及特征重要性；
-        - **信贷资源分配策略**：在预算约束下的放贷策略结果与简单交互演示；
-        - **总结与展望**：关键结论与后续改进方向。
-        """
-    )
+    # st.markdown(
+    #     """
+    #     ### 四、页面导航说明
+    #
+    #     通过左侧侧边栏可以切换查看：
+    #
+    #     - **项目概览**：背景、目标与整体框架；
+    #     - **数据与预处理**：原始数据说明与特征构造步骤；
+    #     - **相关性分析**：各变量与违约关系的可视化与统计结果；
+    #     - **违约预测模型**：模型结构、性能指标及特征重要性；
+    #     - **信贷资源分配策略**：在预算约束下的放贷策略结果与简单交互演示；
+    #     - **总结与展望**：关键结论与后续改进方向。
+    #     """
+    # )
 
 
 def page_data_preprocess():
@@ -283,6 +306,7 @@ def page_strategy():
                 )
         else:
             st.info(
+                # TODO:  没有找到明显代表“信誉评级”的列名（例如rating / 信用等级 / 评级 / credit_rating），请根据你的实际列名修改代码中candidate_rating_cols列表。
                 "没有找到明显代表“信誉评级”的列名（例如 rating / 信用等级 / 评级 / credit_rating），"
                 "请根据你的实际列名修改代码中 candidate_rating_cols 列表。"
             )
@@ -335,6 +359,7 @@ def page_strategy():
             st.caption("下表为当前阈值下部分可放贷企业（前 20 行）：")
             st.dataframe(lend_df.head(20))
         else:
+            # TODO: 未识别到贷款额度字段，仅展示企业数量。
             st.info("未识别到违约概率字段（例如 default_prob / 违约概率），请根据实际数据修改 prob_col_candidates。")
 
     report = load_txt("credit_strategy_report.txt")
@@ -415,7 +440,9 @@ def main():
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.write("作者：XXX\n\n课程：统计分析与建模\n")
+
+    # TODO: 写上名字学号
+    st.sidebar.write("作者：回头填上\n\n课程：统计分析与建模\n")
 
     if page == "项目概览":
         page_overview()
