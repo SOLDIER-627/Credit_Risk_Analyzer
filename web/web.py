@@ -9,6 +9,9 @@ CURRENT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = CURRENT_DIR.parent
 # 结果文件所在目录：.../results
 RESULTS_DIR = ROOT_DIR / "results"
+RESULTS_CORRELATION_ANALYSIS_DIR = RESULTS_DIR / "correlation_analysis"
+RESULTS_CREDIT_STRATEGY_DIR = RESULTS_DIR / "credit_strategy"
+RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
 
 # =============== 一些通用的小工具函数 ===============
 
@@ -50,7 +53,8 @@ def load_csv(path: str):
 
 def load_txt(path: str):
     """安全读取 txt 报告。"""
-    p = Path(path)
+    # p = Path(path)
+    p = RESULTS_DIR / path
     if not p.exists():
         st.warning(f"找不到报告文件：{path}")
         return None
@@ -195,7 +199,7 @@ def page_correlation():
         st.subheader("4.2 统计检验结果（节选）")
         st.dataframe(df_stat.head(15))
 
-    report = load_txt("correlation_analysis_report.txt")
+    report = load_txt(RESULTS_CORRELATION_ANALYSIS_DIR / "correlation_analysis_report.txt")
     if report is not None:
         st.subheader("4.3 分析结论摘要")
         with st.expander("展开查看文字版分析结论"):
@@ -244,7 +248,7 @@ def page_model():
         st.subheader("3.1 模型系数（节选）")
         st.dataframe(df_coef.head(20))
 
-    report = load_txt("prediction_model_report.txt")
+    report = load_txt(RESULTS_PREDICTION_MODEL_DIR / "prediction_model_report.txt")
     if report is not None:
         st.subheader("3.2 模型评估文字报告（摘要）")
         with st.expander("展开查看模型评估报告"):
@@ -370,7 +374,7 @@ def page_strategy():
             # TODO: 未识别到贷款额度字段，仅展示企业数量。
             st.info("未识别到违约概率字段（例如 default_prob / 违约概率），请根据实际数据修改 prob_col_candidates。")
 
-    report = load_txt("credit_strategy_report.txt")
+    report = load_txt(RESULTS_CREDIT_STRATEGY_DIR / "credit_strategy_report.txt")
     if report is not None:
         st.subheader("5. 策略效果分析报告（摘要）")
         with st.expander("展开查看信贷策略评估报告"):
