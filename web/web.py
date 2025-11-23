@@ -15,17 +15,6 @@ RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
 
 # =============== 一些通用的小工具函数 ===============
 
-# def load_csv(path: str):
-#     """安全读取 CSV，不存在就给出提示。"""
-#     p = Path(path)
-#     if not p.exists():
-#         st.warning(f"找不到数据文件：{path}（请确认文件是否与 app.py 在同一目录下）")
-#         return None
-#     try:
-#         return pd.read_csv(p)
-#     except Exception as e:
-#         st.error(f"读取 {path} 失败：{e}")
-#         return None
 def load_csv(path: str):
     p = Path(path)
     if not p.exists():
@@ -53,8 +42,7 @@ def load_csv(path: str):
 
 def load_txt(path: str):
     """安全读取 txt 报告。"""
-    # p = Path(path)
-    p = RESULTS_DIR / path
+    p = Path(path)
     if not p.exists():
         st.warning(f"找不到报告文件：{path}")
         return None
