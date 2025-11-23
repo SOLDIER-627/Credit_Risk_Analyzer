@@ -88,7 +88,7 @@ def page_overview():
 
     st.markdown("### 三、项目整体流程示意")
     show_image(
-        "strategy_visualization.png",
+        RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
         caption="信贷策略与整体流程可视化（示意）"
     )
 
@@ -166,13 +166,13 @@ def page_correlation():
 
     st.markdown("### 2. 相关性热力图")
     show_image(
-        "comprehensive_correlation_heatmap.png",
+        RESULTS_CORRELATION_ANALYSIS_DIR / "comprehensive_correlation_heatmap.png",
         caption="主要特征之间及与违约的相关性热力图"
     )
 
     st.markdown("### 3. 与违约相关性排序条形图")
     show_image(
-        "default_correlation_bars.png",
+        RESULTS_CORRELATION_ANALYSIS_DIR / "default_correlation_bars.png",
         caption="各变量与违约变量的相关性（示意）"
     )
 
@@ -211,24 +211,24 @@ def page_model():
 
     st.markdown("### 2. 模型性能指标与 ROC 曲线")
     show_image(
-        "roc_curve.png",
+        RESULTS_PREDICTION_MODEL_DIR / "roc_curve.png",
         caption="违约预测模型 ROC 曲线"
     )
 
     show_image(
-        "probability_distribution.png",
+        RESULTS_PREDICTION_MODEL_DIR / "probability_distribution.png",
         caption="企业违约概率分布示意"
     )
 
     st.markdown("### 3. 特征重要性与模型系数")
 
     show_image(
-        "feature_importance.png",
+        RESULTS_PREDICTION_MODEL_DIR / "feature_importance.png",
         caption="模型中特征重要性排序（示意）"
     )
 
     show_image(
-        "important_variables_comparison.png",
+        RESULTS_CORRELATION_ANALYSIS_DIR / "important_variables_comparison.png",
         caption="部分关键变量重要性对比（示意）"
     )
 
@@ -260,17 +260,17 @@ def page_strategy():
 
     st.markdown("### 2. 策略结果整体可视化")
     show_image(
-        "credit_rating_analysis.png",
+        RESULTS_CORRELATION_ANALYSIS_DIR / "credit_rating_analysis.png",
         caption="不同信誉评级企业的违约情况与放贷策略示意"
     )
 
     show_image(
-        "churn_rate_fitting.png",
+        RESULTS_CREDIT_STRATEGY_DIR / "churn_rate_fitting.png",
         caption="利率与客户流失率关系拟合曲线（示意）"
     )
 
     show_image(
-        "strategy_visualization.png",
+        RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
         caption="整体信贷资源分配策略可视化（示意）"
     )
 
