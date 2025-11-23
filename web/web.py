@@ -16,6 +16,7 @@ RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
 # =============== 一些通用的小工具函数 ===============
 
 def load_csv(path: str):
+    # TODO: 这里显示输出编码方式，回头去掉
     p = Path(path)
     if not p.exists():
         st.warning(f"找不到数据文件：{path}（请确认文件是否与 app.py 在同一目录下）")
