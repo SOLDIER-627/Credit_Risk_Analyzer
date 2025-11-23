@@ -2,6 +2,14 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 
+# === 路径配置 ===
+# 当前文件所在的目录：.../web
+CURRENT_DIR = Path(__file__).resolve().parent
+# 项目根目录：.../
+ROOT_DIR = CURRENT_DIR.parent
+# 结果文件所在目录：.../results
+RESULTS_DIR = ROOT_DIR / "results"
+
 # =============== 一些通用的小工具函数 ===============
 
 # def load_csv(path: str):
