@@ -141,7 +141,7 @@ def page_data_preprocess():
     st.markdown("### 3. 企业层面数据示例")
 
     # 这里你可以替换为你最终用于建模的企业级 CSV 文件名
-    df_example = load_csv("all_companies_default_probabilities.csv")
+    df_example = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "all_companies_default_probabilities.csv")
 
     if df_example is not None:
         st.caption("下表展示若干企业的示例数据（前 10 行）：")
@@ -177,12 +177,12 @@ def page_correlation():
 
     st.markdown("### 4. 详细相关性与统计检验结果")
 
-    df_corr = load_csv("detailed_correlation_results.csv")
+    df_corr = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "detailed_correlation_results.csv")
     if df_corr is not None:
         st.subheader("4.1 相关性结果（节选）")
         st.dataframe(df_corr.head(15))
 
-    df_stat = load_csv("statistical_test_results.csv")
+    df_stat = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "statistical_test_results.csv")
     if df_stat is not None:
         st.subheader("4.2 统计检验结果（节选）")
         st.dataframe(df_stat.head(15))
@@ -231,7 +231,7 @@ def page_model():
         caption="部分关键变量重要性对比（示意）"
     )
 
-    df_coef = load_csv("model_coefficients.csv")
+    df_coef = load_csv(RESULTS_PREDICTION_MODEL_DIR / "model_coefficients.csv")
     if df_coef is not None:
         st.subheader("3.1 模型系数（节选）")
         st.dataframe(df_coef.head(20))
@@ -275,7 +275,7 @@ def page_strategy():
 
     st.markdown("### 3. 信贷分配结果数据（分层展示）")
 
-    df_alloc = load_csv("credit_allocation_details.csv")
+    df_alloc = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "credit_allocation_details.csv")
     if df_alloc is not None:
         st.subheader("3.1 原始分配结果（节选）")
         st.dataframe(df_alloc.head(20))
@@ -311,14 +311,14 @@ def page_strategy():
                 "请根据你的实际列名修改代码中 candidate_rating_cols 列表。"
             )
 
-    df_extreme = load_csv("extreme_probability_companies.csv")
+    df_extreme = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "extreme_probability_companies.csv")
     if df_extreme is not None:
         st.subheader("3.3 极端违约概率企业（节选）")
         st.dataframe(df_extreme.head(20))
 
     st.markdown("### 4. 简单交互：违约概率阈值 & 放贷规模（演示）")
 
-    df_prob = load_csv("all_companies_default_probabilities.csv")
+    df_prob = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "all_companies_default_probabilities.csv")
     if df_prob is not None:
         # 尝试找到违约概率、贷款金额字段
         prob_col_candidates = ["default_prob", "违约概率", "prob_default", "p_default"]
