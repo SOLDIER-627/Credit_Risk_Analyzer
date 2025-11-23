@@ -54,6 +54,10 @@ def load_txt(path: str):
         return None
 
 
+# TODO:
+# - 所有的图片加载都显示:
+# - The use_column_width parameter has been deprecated and will be removed in a future release. Please utilize the use_container_width parameter instead.
+# - 看看如何修复
 def show_image(path: str, caption: str = "", use_column_width=True):
     """安全显示图片。"""
     p = Path(path)
