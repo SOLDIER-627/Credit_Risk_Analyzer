@@ -4,6 +4,7 @@
 # 加载配置
 source("code/00_config.R")
 
+
 # 函数：加载数据和模型
 load_data_and_model <- function() {
   # 加载附件1数据和训练好的模型
@@ -490,6 +491,34 @@ plot_strategy_visualization <- function(funded_companies, results_dir) {
 # 主执行流程
 cat("开始制定信贷策略...\n\n")
 
+option_list <- list(
+  make_option(c("--budget"), type = "numeric", default = 10000, 
+              help = "信贷总预算 (万元) [默认: %default]"),
+  
+  make_option(c("--min_loan"), type = "numeric", default = 10, 
+              help = "单笔贷款最小额度 (万元) [默认: %default]"),
+  
+  make_option(c("--max_loan"), type = "numeric", default = 100, 
+              help = "单笔贷款最大额度 (万元) [默认: %default]"),
+  
+  make_option(c("--min_rate"), type = "numeric", default = 0.04, 
+              help = "贷款年利率下限 (小数) [默认: %default]"),
+  
+  make_option(c("--max_rate"), type = "numeric", default = 0.15, 
+              help = "贷款年利率上限 (小数) [默认: %default]")
+)
+
+# 解析命令行参数
+opt_parser <- OptionParser(option_list = option_list)
+opt <- parse_args(opt_parser)
+
+cat("开始制定信贷策略...\n\n")
+cat("=== 当前运行参数 ===\n")
+cat(sprintf("总预算: %d 万元\n", opt$budget))
+cat(sprintf("贷款额度范围: [%d, %d] 万元\n", opt$min_loan, opt$max_loan))
+cat(sprintf("利率范围: [%.2f, %.2f]\n", opt$min_rate, opt$max_rate))
+cat("======================\n\n")
+
 # 创建输出目录
 results_dir <- "results/credit_strategy/"
 if (!dir.exists(results_dir)) {
@@ -508,10 +537,13 @@ churn_models <- fit_churn_rate_models(results_dir)
 company_data_with_probs <- predict_default_probabilities(company_data, logistic_model, results_dir)
 
 # 4. 设置贷款参数
-loan_amount_range <- c(10, 100)      # 10-100万元
-interest_rate_range <- c(0.04, 0.15) # 4%-15%
-loan_term <- 1                       # 1年
-total_budget <- 10000                # 1亿元 = 10000万元
+# loan_amount_range <- c(10, 100)      # 10-100万元
+# interest_rate_range <- c(0.04, 0.15) # 4%-15%
+# loan_term <- 1                       # 1年
+# total_budget <- 10000                # 1亿元 = 10000万元
+loan_amount_range <- c(opt$min_loan, opt$max_loan)      
+interest_rate_range <- c(opt$min_rate, opt$max_rate) 
+total_budget <- opt$budget        
 
 # 5. 计算期望收益
 company_data_with_probs <- company_data_with_probs[company_data_with_probs$信誉评级 %in% c("A", "B", "C"), ]

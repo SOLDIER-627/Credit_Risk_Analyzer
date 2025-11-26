@@ -11,6 +11,7 @@ rm(list = ls())
 # 加载R包
 
 # 数据处理包
+library(optparse)
 library(dplyr)        # 数据操作和转换
 library(tidyr)        # 数据整理
 library(readr)        # 高效读取数据
