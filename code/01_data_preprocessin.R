@@ -242,38 +242,14 @@ final_dataset_1 <- merge_all_data(company_info_1, purchase_metrics_1, sales_metr
 # 6. 编码分类变量
 final_dataset_encoded_1 <- encode_categorical_variables(final_dataset_1)
 
-# 7. 处理附件2：302家无信贷记录企业的数据
-cat("\n=== 处理附件2：302家无信贷记录企业 ===\n")
-company_info_2 <- read_company_info(paste0("data/raw/", "附件2：302家无信贷记录企业的相关数据.xlsx"))
-
-# 处理附件2的进项发票数据
-purchase_invoices_2 <- process_invoice_data(paste0("data/raw/", "附件2：302家无信贷记录企业的相关数据.xlsx"), "进项")
-purchase_metrics_2 <- calculate_financial_metrics(purchase_invoices_2, company_info_2, "进项")
-
-# 处理附件2的销项发票数据
-sales_invoices_2 <- process_invoice_data(paste0("data/raw/", "附件2：302家无信贷记录企业的相关数据.xlsx"), "销项")
-sales_metrics_2 <- calculate_financial_metrics(sales_invoices_2, company_info_2, "销项")
-
-# 计算附件2的作废发票比例
-purchase_void_ratio_2 <- calculate_void_invoice_ratio(paste0("data/raw/", "附件2：302家无信贷记录企业的相关数据.xlsx"), "进项")
-sales_void_ratio_2 <- calculate_void_invoice_ratio(paste0("data/raw/", "附件2：302家无信贷记录企业的相关数据.xlsx"), "销项")
-
-# 合并附件2的所有数据（包含新变量）
-final_dataset_2 <- merge_all_data(company_info_2, purchase_metrics_2, sales_metrics_2,
-                                  purchase_void_ratio_2, sales_void_ratio_2)
-
-# 8. 处理缺失值
+# 7. 处理缺失值
 cat("正在处理缺失值\n")
 
 # 对附件1的数据处理缺失值
 final_dataset_clean_1 <- final_dataset_encoded_1 %>%
   mutate(across(where(is.numeric), ~ ifelse(is.na(.), 0, .)))
 
-# 对附件2的数据处理缺失值
-final_dataset_clean_2 <- final_dataset_2 %>%
-  mutate(across(where(is.numeric), ~ ifelse(is.na(.), 0, .)))
-
-# 9. 保存处理后的数据为CSV格式
+# 8. 保存处理后的数据为CSV格式
 cat("正在保存处理后的数据为CSV格式\n")
 
 # 保存附件1处理后的数据
@@ -282,10 +258,3 @@ write.csv(final_dataset_clean_1,
           row.names = FALSE, 
           fileEncoding = "GBK")
 cat("附件1数据保存至:", paste0("data/processed/", "processed_company_data_with_credit.csv"), "\n")
-
-# 保存附件2处理后的数据
-write.csv(final_dataset_clean_2, 
-          file = paste0("data/processed/", "processed_company_data_no_credit.csv"),
-          row.names = FALSE, 
-          fileEncoding = "GBK")
-cat("附件2数据保存至:", paste0("data/processed/", "processed_company_data_no_credit.csv"), "\n")

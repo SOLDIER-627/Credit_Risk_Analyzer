@@ -207,7 +207,7 @@ plot_default_correlation_bars <- function(cor_results, results_dir) {
                      size = 3)
   
   ggsave(paste0(results_dir, "default_correlation_bars.png"),
-         p, width = 10, height = 8, dpi = 300)
+         p, width = 14, height = 10, dpi = 300)
   cat("相关性条形图已保存\n")
 }
 
@@ -218,27 +218,47 @@ plot_important_variables_comparison <- function(data, cor_results, results_dir) 
   
   cat("\n=== 重要变量分组比较 ===\n")
   
-  # 选择相关性最高的6个变量
-  top_vars <- head(cor_results$变量, 6)
+  # 选择相关性最高的8个变量
+  top_vars <- head(cor_results$变量, 8)
   
   plots <- list()
   
   for (i in seq_along(top_vars)) {
     var <- top_vars[i]
     
-    # 创建箱形图
-    p <- ggplot(data, aes(x = factor(是否违约数值, labels = c("未违约", "违约")), 
-                          y = .data[[var]], 
-                          fill = 是否违约)) +
-      geom_boxplot(alpha = 0.7, outlier.shape = NA) +
-      geom_jitter(width = 0.2, alpha = 0.5, size = 1) +
-      scale_fill_manual(values = c("否" = COLOR_PALETTE[1], "是" = COLOR_PALETTE[4])) +
-      labs(title = paste(var, "\n相关系数:", round(cor_results$相关系数[cor_results$变量 == var], 3)),
-           x = "是否违约",
-           y = var) +
-      theme_minimal() +
-      theme(legend.position = "none",
-            plot.title = element_text(size = 10))
+    # 对金额类变量进行对数变换
+    if (grepl("总营收|总支出|运营规模|毛利润|销项发票数量|进项发票数量", var)) {
+      # 创建新变量：log(1 + x) 避免对0取对数
+      temp_data <- data
+      temp_data[[paste0("log_", var)]] <- log1p(temp_data[[var]])
+      
+      p <- ggplot(temp_data, aes(x = factor(是否违约数值, labels = c("未违约", "违约")), 
+                                 y = .data[[paste0("log_", var)]], 
+                                 fill = 是否违约)) +
+        geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+        geom_jitter(width = 0.2, alpha = 0.5, size = 1) +
+        scale_fill_manual(values = c("否" = COLOR_PALETTE[1], "是" = COLOR_PALETTE[4])) +
+        labs(title = paste(var, "\n相关系数:", round(cor_results$相关系数[cor_results$变量 == var], 3)),
+             x = "是否违约",
+             y = paste("log(1 +", var, ")")) +
+        theme_minimal() +
+        theme(legend.position = "none",
+              plot.title = element_text(size = 10))
+    } else {
+      # 非金额变量保持原样
+      p <- ggplot(data, aes(x = factor(是否违约数值, labels = c("未违约", "违约")), 
+                            y = .data[[var]], 
+                            fill = 是否违约)) +
+        geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+        geom_jitter(width = 0.2, alpha = 0.5, size = 1) +
+        scale_fill_manual(values = c("否" = COLOR_PALETTE[1], "是" = COLOR_PALETTE[4])) +
+        labs(title = paste(var, "\n相关系数:", round(cor_results$相关系数[cor_results$变量 == var], 3)),
+             x = "是否违约",
+             y = var) +
+        theme_minimal() +
+        theme(legend.position = "none",
+              plot.title = element_text(size = 10))
+    }
     
     plots[[i]] <- p
   }
@@ -261,8 +281,8 @@ perform_comprehensive_tests <- function(data, cor_results) {
   
   cat("\n=== 执行统计检验 ===\n")
   
-  # 选择相关性较高的变量进行检验
-  test_vars <- head(cor_results$变量, 10)
+  # 选择变量进行检验
+  test_vars <- head(cor_results$变量, 14)
   
   test_results <- data.frame(
     变量 = character(),
@@ -391,7 +411,12 @@ generate_comprehensive_report <- function(data, cor_results, test_results, ratin
     for (rating in names(rating_analysis$default_rates)) {
       cat("     ", rating, ": ", round(rating_analysis$default_rates[rating] * 100, 2), "%\n", sep = "")
     }
-    cat("   卡方检验 p值:", round(rating_analysis$chi_test$p.value, 4), "\n")
+    p_value <- rating_analysis$chi_test$p.value
+    if (p_value < 0.0001) {
+      cat("   卡方检验 p值: < 0.0001 (极其显著)\n")
+    } else {
+      cat("   卡方检验 p值:", round(p_value, 4), "\n")
+    }
   }
   
   

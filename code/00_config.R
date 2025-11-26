@@ -3,7 +3,6 @@
 
 # 首先设置编码为UTF-8
 options(encoding = "UTF-8")
-# Sys.setlocale(category = "LC_ALL", locale = "Chinese")
 
 # 移除之前可能存在的变量，确保环境干净
 rm(list = ls())

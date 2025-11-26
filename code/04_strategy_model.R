@@ -20,7 +20,7 @@ load_data_and_model <- function() {
   company_data <- read.csv(data_file, fileEncoding = "GBK")
   
   # 加载模型
-  model_file <- paste0("results/prediction_model/", "logistic_regression_model.rds")
+  model_file <- paste0("results/prediction_model/", "lasso_model_with_scaler.rds")
   if (!file.exists(model_file)) {
     stop("模型文件不存在: ", model_file, "\n请先运行03_prediction_model.R")
   }
@@ -172,17 +172,101 @@ predict_default_probabilities <- function(data, model, results_dir) {
   
   cat("\n=== 预测违约概率 ===\n")
   
-  # 获取模型使用的变量（排除截距项）
-  model_vars <- names(coef(model))[-1]
+  # 提取模型和预处理对象
+  lasso_model <- model$model
+  scaler <- model$scaler
+  
+  # 检查模型类型
+  cat("模型类型:", class(lasso_model), "\n")
+  
+  # 如果模型是数值向量，说明保存的是系数，需要重建模型
+  if (is.numeric(lasso_model)) {
+    cat("检测到模型为系数向量，重建模型结构...\n")
+    
+    # 从系数文件中读取所有模型变量
+    coef_file <- paste0("results/prediction_model/", "lasso_model_coefficients.csv")
+    if (!file.exists(coef_file)) {
+      stop("模型系数文件不存在: ", coef_file)
+    }
+    
+    coef_df <- read.csv(coef_file, fileEncoding = "GBK")
+    
+    # 创建模拟的glmnet模型对象
+    lasso_model <- list(
+      beta = as.matrix(coef_df$系数[-1]),  # 排除截距项
+      a0 = coef_df$系数[1],  # 截距项
+      lambda = 0.001,  # 使用一个小的lambda值
+      dev.ratio = 0.8,  # 假设的偏差解释比例
+      nulldev = 1.0,    # 假设的零偏差
+      npasses = 10,     # 假设的迭代次数
+      jerr = 0,         # 无错误
+      dim = c(length(coef_df$系数[-1]), 1),
+      class = "glmnet"
+    )
+    class(lasso_model) <- "glmnet"
+  }
+  
+  # 从系数文件中读取所有模型变量（包括系数为0的变量）
+  coef_file <- paste0("results/prediction_model/", "lasso_model_coefficients.csv")
+  if (!file.exists(coef_file)) {
+    stop("模型系数文件不存在: ", coef_file)
+  }
+  
+  coef_df <- read.csv(coef_file, fileEncoding = "GBK")
+  
+  # 获取所有模型变量（排除截距项）
+  model_vars <- coef_df$变量[coef_df$变量 != "(Intercept)"]
+  
+  cat("从系数文件读取的模型变量 (", length(model_vars), "个):\n", sep = "")
+  cat(paste(model_vars, collapse = ", "), "\n")
   
   # 检查数据中是否包含所有需要的变量
   missing_vars <- setdiff(model_vars, colnames(data))
   if (length(missing_vars) > 0) {
-    stop("数据中缺少模型变量: ", paste(missing_vars, collapse = ", "))
+    cat("警告：数据中缺少以下模型变量: ", paste(missing_vars, collapse = ", "), "\n")
+    cat("将在数据中创建这些变量并设为0\n")
+    
+    # 在数据中创建缺失的变量并设为0
+    for (var in missing_vars) {
+      data[[var]] <- 0
+    }
   }
   
-  # 预测违约概率
-  default_probs <- predict(model, newdata = data, type = "response")
+  # 准备预测数据（使用所有模型变量，包括系数为0的）
+  predict_data <- data[, model_vars, drop = FALSE]
+  
+  # 检查预测数据是否有NA值
+  if (any(is.na(predict_data))) {
+    cat("警告：预测数据中存在NA值，将用0填充\n")
+    predict_data[is.na(predict_data)] <- 0
+  }
+  
+  cat("预测数据维度:", dim(predict_data), "\n")
+  
+  # 使用训练时的归一化规则对预测数据进行标准化
+  predict_data_scaled <- predict(scaler, predict_data)
+  
+  # 转换为矩阵格式（glmnet要求）
+  predict_matrix <- as.matrix(predict_data_scaled)
+  
+  cat("标准化后的预测矩阵维度:", dim(predict_matrix), "\n")
+  
+  # 预测违约概率 - 使用手动计算
+  cat("使用系数手动计算违约概率...\n")
+  
+  # 获取系数
+  intercept <- coef_df$系数[coef_df$变量 == "(Intercept)"]
+  coefficients <- coef_df$系数[coef_df$变量 != "(Intercept)"]
+  names(coefficients) <- model_vars
+  
+  # 手动计算线性组合
+  linear_combination <- intercept
+  for (var in model_vars) {
+    linear_combination <- linear_combination + coefficients[var] * predict_matrix[, var]
+  }
+  
+  # 使用逻辑函数计算概率
+  default_probs <- 1 / (1 + exp(-linear_combination))
   
   # 添加到数据中
   data$违约概率 <- default_probs
@@ -196,17 +280,6 @@ predict_default_probabilities <- function(data, model, results_dir) {
   cat("违约概率分布:\n")
   prob_summary <- summary(default_probs)
   print(prob_summary)
-  
-  # 检查极端值
-  extreme_probs <- data[default_probs > 0.9 | default_probs < 0.1, 
-                        c("企业代号", "信誉评级", "是否违约", "违约概率")]
-  
-  cat("\n极端违约概率企业 (概率 > 0.9 或 < 0.1):\n")
-  if (nrow(extreme_probs) > 0) {
-    print(extreme_probs[order(extreme_probs$违约概率, decreasing = TRUE), ])
-  } else {
-    cat("无极端值\n")
-  }
   
   # 保存所有企业的违约概率到CSV文件
   prob_output <- data[, c("企业代号", "企业名称", "信誉评级", "是否违约", "违约概率")]
@@ -226,19 +299,12 @@ predict_default_probabilities <- function(data, model, results_dir) {
   write.csv(prob_output, prob_file, row.names = FALSE, fileEncoding = "GBK")
   cat("\n所有企业违约概率已保存至:", prob_file, "\n")
   
-  # 保存极端概率企业的详细信息
-  if (nrow(extreme_probs) > 0) {
-    extreme_file <- paste0(results_dir, "extreme_probability_companies.csv")
-    write.csv(extreme_probs, extreme_file, row.names = FALSE, fileEncoding = "GBK")
-    cat("极端概率企业详情已保存至:", extreme_file, "\n")
-  }
-  
   return(data)
 }
 
 # 函数：计算期望收益
 calculate_expected_return <- function(data, churn_models, 
-                                      loan_amount_range = c(10, 100),
+                                      loan_amount_range = c(10, 200),
                                       interest_rate_range = c(0.04, 0.15),
                                       total_budget = 10000) {
   # 计算每个企业的期望收益
@@ -260,18 +326,18 @@ calculate_expected_return <- function(data, churn_models,
     期望收益 = 0   # 初始化为0
   )
   
-  # 为不同信誉评级设置基准利率
+  # 为不同信誉评级设置基准利率（基于风险调整）
   base_rates <- c(
-    "A" = 0.06,
-    "B" = 0.08,
-    "C" = 0.12
+    "A" = 0.06,   # 低风险客户，较低利率
+    "B" = 0.09,   # 中等风险，适中利率  
+    "C" = 0.13    # 高风险，较高利率但避免过高导致流失
   )
   
-  # 为不同信誉评级设置贷款额度系数
+  # 为不同信誉评级设置贷款额度系数（基于风险调整）
   loan_factors <- c(
     "A" = 1.0,    # 全额贷款
-    "B" = 0.8,    # 80%额度
-    "C" = 0.6     # 60%额度
+    "B" = 0.7,    # 70%额度
+    "C" = 0.4     # 40%额度
   )
   
   # 计算每个企业的贷款额度和利率
@@ -279,20 +345,22 @@ calculate_expected_return <- function(data, churn_models,
     rating <- as.character(results$信誉评级[i])
     default_prob <- results$违约概率[i]
     
-    # 根据信誉评级和违约概率调整利率
+    # 根据信誉评级和违约概率调整利率（更温和的风险溢价）
     base_rate <- base_rates[rating]
-    risk_adjustment <- default_prob * 0.05  # 违约概率每增加1%，利率增加0.05%
+    # 风险调整：违约概率每增加1%，利率增加0.03%
+    risk_adjustment <- default_prob * 0.03
     final_rate <- base_rate + risk_adjustment
     
     # 确保利率在合理范围内
     final_rate <- max(interest_rate_range[1], min(interest_rate_range[2], final_rate))
     
-    # 根据信誉评级和违约概率确定贷款额度
+    # 根据信誉评级和违约概率确定贷款额度（更严格的风险控制）
     base_amount <- loan_amount_range[1] + 
       (loan_amount_range[2] - loan_amount_range[1]) * loan_factors[rating]
     
     # 违约概率越高，额度越低
-    risk_adjustment_amount <- max(0.3, 1 - default_prob * 2)  # 设置最低额度比例
+    # 设置最低额度比例为0.2，对高风险客户更严格
+    risk_adjustment_amount <- max(0.2, 1 - default_prob * 3)  # 额度削减更严格
     final_amount <- base_amount * risk_adjustment_amount
     
     # 确保额度在合理范围内
@@ -314,11 +382,14 @@ calculate_expected_return <- function(data, churn_models,
     churn_prob <- predict(churn_model, newdata = data.frame(利率 = interest_rate))
     churn_prob <- max(0, min(1, churn_prob))  # 确保在0-1范围内
     
-    # 计算基础期望收益
+    # 计算基础期望收益（改进的收益计算）
     # 如果企业不违约：收益 = 贷款额度 * 利率
-    # 如果企业违约：损失 = 贷款额度
+    # 如果企业违约：损失 = 贷款额度 * 违约损失率（假设为70%收）
+    recovery_rate <- 0.3  # 假设违约后能回收30%的资金
+    default_loss_rate <- 1 - recovery_rate  # 实际损失率为70%
+    
     base_expected_return <- loan_amount * interest_rate * (1 - default_prob) - 
-      loan_amount * default_prob
+      loan_amount * default_prob * default_loss_rate
     
     # 考虑客户流失后的调整收益
     adjusted_return <- base_expected_return * (1 - churn_prob)
@@ -329,6 +400,18 @@ calculate_expected_return <- function(data, churn_models,
   cat("期望收益计算完成\n")
   cat("- 平均期望收益:", round(mean(results$期望收益), 2), "万元\n")
   cat("- 总期望收益:", round(sum(results$期望收益), 2), "万元\n")
+  
+  # 按信誉评级统计期望收益
+  rating_stats <- results %>%
+    group_by(信誉评级) %>%
+    summarise(
+      企业数量 = n(),
+      平均期望收益 = round(mean(期望收益), 2),
+      总期望收益 = round(sum(期望收益), 2)
+    )
+  
+  cat("\n按信誉评级统计:\n")
+  print(rating_stats)
   
   return(results)
 }
@@ -498,7 +581,7 @@ option_list <- list(
   make_option(c("--min_loan"), type = "numeric", default = 10, 
               help = "单笔贷款最小额度 (万元) [默认: %default]"),
   
-  make_option(c("--max_loan"), type = "numeric", default = 100, 
+  make_option(c("--max_loan"), type = "numeric", default = 150, 
               help = "单笔贷款最大额度 (万元) [默认: %default]"),
   
   make_option(c("--min_rate"), type = "numeric", default = 0.04, 
@@ -537,10 +620,6 @@ churn_models <- fit_churn_rate_models(results_dir)
 company_data_with_probs <- predict_default_probabilities(company_data, logistic_model, results_dir)
 
 # 4. 设置贷款参数
-# loan_amount_range <- c(10, 100)      # 10-100万元
-# interest_rate_range <- c(0.04, 0.15) # 4%-15%
-# loan_term <- 1                       # 1年
-# total_budget <- 10000                # 1亿元 = 10000万元
 loan_amount_range <- c(opt$min_loan, opt$max_loan)      
 interest_rate_range <- c(opt$min_rate, opt$max_rate) 
 total_budget <- opt$budget        
