@@ -19,7 +19,7 @@ RESULTS_CREDIT_STRATEGY_DIR = RESULTS_DIR / "credit_strategy"
 RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
 
 # R 脚本路径
-R_SCRIPT_PATH = ROOT_DIR / "04_strategy_model.R"  # 假设 R 脚本在根目录
+R_SCRIPT_PATH = ROOT_DIR / "code" / "04_strategy_model.R"  # 假设 R 脚本在根目录
 
 # 确保目录存在
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
