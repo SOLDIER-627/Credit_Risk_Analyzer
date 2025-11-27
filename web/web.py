@@ -1,442 +1,357 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+import subprocess
+import os
+import shutil
 
 # === 路径配置 ===
-# 当前文件所在的目录：.../web
+# 当前文件所在的目录
 CURRENT_DIR = Path(__file__).resolve().parent
-# 项目根目录：.../
+# 项目根目录
 ROOT_DIR = CURRENT_DIR.parent
-# 结果文件所在目录：.../results
+
+# 数据目录配置 (必须与 R 脚本中的路径一致)
+DATA_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
 RESULTS_DIR = ROOT_DIR / "results"
 RESULTS_CORRELATION_ANALYSIS_DIR = RESULTS_DIR / "correlation_analysis"
 RESULTS_CREDIT_STRATEGY_DIR = RESULTS_DIR / "credit_strategy"
 RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
 
-# =============== 一些通用的小工具函数 ===============
+# R 脚本路径
+R_SCRIPT_PATH = ROOT_DIR / "04_strategy_model.R"  # 假设 R 脚本在根目录
 
-def load_csv(path: str):
-    # TODO: 这里显示输出编码方式，回头去掉
-    p = Path(path)
-    if not p.exists():
-        st.warning(f"找不到数据文件：{path}（请确认文件是否与 app.py 在同一目录下）")
+# 确保目录存在
+DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_CREDIT_STRATEGY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# =============== 通用工具函数 ===============
+
+def load_csv(path: Path):
+    """读取 CSV 文件，支持多种编码。"""
+    if not path.exists():
         return None
 
-    encodings_to_try = ["utf-8", "utf-8-sig", "gbk", "gb2312", "ansi", "latin1"]
-
-    last_err = None
+    encodings_to_try = ["gbk", "utf-8", "utf-8-sig", "gb2312"]
     for enc in encodings_to_try:
         try:
-            df = pd.read_csv(p, encoding=enc)
-            st.caption(f"（已使用编码 `{enc}` 成功读取 {path}）")
+            df = pd.read_csv(path, encoding=enc)
             return df
-        except UnicodeDecodeError as e:
-            last_err = e
+        except UnicodeDecodeError:
             continue
         except Exception as e:
-            last_err = e
-            continue
-
-    st.error(f"读取 {path} 失败，尝试的编码有：{encodings_to_try}，最后一个错误：{last_err}")
+            st.error(f"读取文件错误: {e}")
+            return None
+    st.error(f"无法读取文件 {path.name}，请检查编码格式。")
     return None
 
 
-def load_txt(path: str):
-    """安全读取 txt 报告。"""
-    p = Path(path)
-    if not p.exists():
-        st.warning(f"找不到报告文件：{path}")
+def load_txt(path: Path):
+    """读取 TXT 报告。"""
+    if not path.exists():
         return None
     try:
-        return p.read_text(encoding="utf-8", errors="ignore")
-    except Exception as e:
-        st.error(f"读取 {path} 失败：{e}")
-        return None
+        return path.read_text(encoding="gbk", errors="ignore")  # R脚本输出通常是GBK
+    except:
+        return path.read_text(encoding="utf-8", errors="ignore")
 
 
-# TODO:
-# - 所有的图片加载都显示:
-# - The use_column_width parameter has been deprecated and will be removed in a future release. Please utilize the use_container_width parameter instead.
-# - 看看如何修复
-def show_image(path: str, caption: str = "", use_column_width=True):
-    """安全显示图片。"""
-    p = Path(path)
-    if not p.exists():
-        st.warning(f"找不到图片文件：{path}")
+def show_image(path: Path, caption: str = "", use_container_width=True):
+    """显示图片。"""
+    if not path.exists():
+        st.warning(f"图片尚未生成或找不到：{path.name}")
         return
-    st.image(str(p), caption=caption, use_column_width=use_column_width)
+    st.image(str(path), caption=caption, use_container_width=use_container_width)
+
+
+def run_r_script(budget, min_loan, max_loan, min_rate, max_rate):
+    """
+    调用 R 脚本执行策略模型。
+    """
+    # 检查 R 脚本是否存在
+    if not R_SCRIPT_PATH.exists():
+        st.error(f"找不到 R 脚本文件：{R_SCRIPT_PATH}")
+        return False
+
+    # 构建命令
+    # Rscript 04_strategy_model.R --budget 10000 --min_loan 10 ...
+    cmd = [
+        "Rscript",
+        str(R_SCRIPT_PATH),
+        "--budget", str(budget),
+        "--min_loan", str(min_loan),
+        "--max_loan", str(max_loan),
+        "--min_rate", str(min_rate),
+        "--max_rate", str(max_rate)
+    ]
+
+    try:
+        # 运行命令，捕获输出
+        result = subprocess.run(
+            cmd,
+            cwd=str(ROOT_DIR),  # 设置工作目录为项目根目录，确保 R 脚本内的相对路径正确
+            capture_output=True,
+            text=True,
+            encoding='utf-8'  # 尝试用 utf-8 捕获输出，如果 R 输出是 GBK 可能会乱码，但不影响执行
+        )
+
+        if result.returncode == 0:
+            st.toast("模型运行成功！结果已更新。", icon="✅")
+            # 可以在这里打印 R 的标准输出用于调试
+            # with st.expander("查看 R 脚本运行日志"):
+            #     st.code(result.stdout)
+            return True
+        else:
+            st.error("R 脚本运行失败。")
+            with st.expander("查看错误日志"):
+                st.code(result.stderr)
+            return False
+
+    except FileNotFoundError:
+        st.error(
+            "无法执行 'Rscript' 命令。请确保您的电脑上已安装 R 语言，并将 R 的 bin 目录添加到了系统环境变量 PATH 中。")
+        return False
+    except Exception as e:
+        st.error(f"运行发生未知错误: {e}")
+        return False
 
 
 # =============== 页面内容函数 ===============
 
 def page_overview():
     st.title("中小微企业信贷决策分析与建模")
-    st.subheader("—— 基于违约预测与资源分配的综合策略研究")
+    st.markdown("---")
+    st.info("👋 欢迎使用！请先在左侧侧边栏上传最新的企业数据文件。")
 
     st.markdown(
         """
-        ### 一、项目背景
+        ### 一、系统功能
+        本系统旨在辅助银行进行信贷决策，主要功能包括：
+        1.  **数据集成**：导入企业预处理后的数据。
+        2.  **参数仿真**：自定义信贷预算、利率范围及单笔限额。
+        3.  **自动建模**：后台调用 R 语言模型进行风险预测与资源分配。
+        4.  **可视决策**：直观展示策略结果与收益预期。
 
-        - 银行在向 **中小微企业** 发放贷款时面临较大的违约风险；
-        - 题目提供了企业的发票数据、信誉评级、历史违约情况以及利率与客户流失关系；
-        - 我们希望通过 **数据分析与建模**，为银行设计一套兼顾“收益”和“风险”的信贷决策方案。
-
-        ### 二、研究目标
-
-        1. 对企业发票等数据进行清洗与特征构造，得到企业层面的关键指标；
-        2. 分析各指标与违约之间的关系，识别重要风险因子；
-        3. 建立企业违约概率预测模型（逻辑回归）；
-        4. 在预算约束与利率–流失率关系下，设计信贷资源分配策略。
+        ### 二、操作流程
+        1.  **上传数据**：在左侧侧边栏上传 `processed_company_data_with_credit.csv`。
+        2.  **配置参数**：进入“信贷资源分配策略”页面，输入业务约束条件。
+        3.  **运行模型**：点击运行按钮，等待模型计算。
+        4.  **查看报告**：查看最新的可视化图表和策略报表。
         """
     )
-
-    st.markdown("### 三、项目整体流程示意")
     show_image(
         RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
-        caption="信贷策略与整体流程可视化（示意）"
+        caption="系统流程示意图"
     )
-
-    # st.markdown(
-    #     """
-    #     ### 四、页面导航说明
-    #
-    #     通过左侧侧边栏可以切换查看：
-    #
-    #     - **项目概览**：背景、目标与整体框架；
-    #     - **数据与预处理**：原始数据说明与特征构造步骤；
-    #     - **相关性分析**：各变量与违约关系的可视化与统计结果；
-    #     - **违约预测模型**：模型结构、性能指标及特征重要性；
-    #     - **信贷资源分配策略**：在预算约束下的放贷策略结果与简单交互演示；
-    #     - **总结与展望**：关键结论与后续改进方向。
-    #     """
-    # )
 
 
 def page_data_preprocess():
-    st.header("数据与预处理")
+    st.header("数据与预处理概览")
+    st.markdown("此处展示当前系统中已加载的数据情况。")
 
-    st.markdown(
-        """
-        ### 1. 数据来源说明
+    # 检查文件是否存在
+    target_file = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
 
-        - **附件 1**：企业发票及相关交易数据；
-        - **附件 2**：企业信誉评级、是否违约等信息；
-        - **附件 3**：不同贷款利率对应的客户流失率关系。
-
-        在本项目中，我们基于发票与企业信息构造了企业层面的聚合指标，
-        如：**总营收、总支出、毛利润、运营规模、发票数量** 等，并与信誉评级、违约标签进行合并，构建建模数据集。
-        """
-    )
-
-    st.markdown("### 2. 预处理主要步骤（示意）")
-    st.markdown(
-        """
-        1. **剔除作废发票**：仅保留有效发票记录；
-        2. **按企业聚合**：
-           - 累计销项金额 → 总营收；
-           - 累计进项金额 → 总支出；
-           - 总营收 − 总支出 → 毛利润；
-           - 发票金额 / 数量等构造运营规模相关指标；
-        3. **合并企业信息**：将聚合后的数据与企业信誉评级、是否违约信息进行合并；
-        4. **处理缺失与异常值**：对极端值、缺失值进行合理处理；
-        5. **划分数据集**：构建建模所需的特征矩阵与标签。
-        """
-    )
-
-    st.markdown("### 3. 企业层面数据示例")
-
-    # 这里你可以替换为你最终用于建模的企业级 CSV 文件名
-    df_example = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "all_companies_default_probabilities.csv")
-
-    if df_example is not None:
-        st.caption("下表展示若干企业的示例数据（前 10 行）：")
-        st.dataframe(df_example.head(10))
+    if target_file.exists():
+        st.success(f"✅ 当前已存在数据文件：`{target_file.name}`")
+        df = load_csv(target_file)
+        if df is not None:
+            st.write(f"**数据规模**：共 {len(df)} 家企业，{len(df.columns)} 个特征。")
+            st.dataframe(df.head(10))
     else:
-        st.info("可以将最终用于建模的企业级数据导出为 CSV，并在这里展示前几行示例。")
+        st.warning("⚠️ 系统中暂无数据文件，请在左侧侧边栏上传。")
 
 
 def page_correlation():
     st.header("相关性分析")
+    st.markdown("基于历史数据生成的静态分析结果。")
 
-    st.markdown(
-        """
-        ### 1. 分析目的
+    tabs = st.tabs(["热力图", "相关性排行", "详细数据"])
 
-        - 探索各企业指标与 **是否违约** 之间的相关关系；
-        - 识别对违约风险影响较大的 **关键变量**；
-        - 为后续特征选择与模型构建提供依据。
-        """
-    )
+    with tabs[0]:
+        show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "comprehensive_correlation_heatmap.png")
 
-    st.markdown("### 2. 相关性热力图")
-    show_image(
-        RESULTS_CORRELATION_ANALYSIS_DIR / "comprehensive_correlation_heatmap.png",
-        caption="主要特征之间及与违约的相关性热力图"
-    )
+    with tabs[1]:
+        show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "default_correlation_bars.png")
 
-    st.markdown("### 3. 与违约相关性排序条形图")
-    show_image(
-        RESULTS_CORRELATION_ANALYSIS_DIR / "default_correlation_bars.png",
-        caption="各变量与违约变量的相关性（示意）"
-    )
-
-    st.markdown("### 4. 详细相关性与统计检验结果")
-
-    df_corr = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "detailed_correlation_results.csv")
-    if df_corr is not None:
-        st.subheader("4.1 相关性结果（节选）")
-        st.dataframe(df_corr.head(15))
-
-    df_stat = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "statistical_test_results.csv")
-    if df_stat is not None:
-        st.subheader("4.2 统计检验结果（节选）")
-        st.dataframe(df_stat.head(15))
-
-    report = load_txt(RESULTS_CORRELATION_ANALYSIS_DIR / "correlation_analysis_report.txt")
-    if report is not None:
-        st.subheader("4.3 分析结论摘要")
-        with st.expander("展开查看文字版分析结论"):
-            st.write(report)
+    with tabs[2]:
+        df_corr = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "detailed_correlation_results.csv")
+        if df_corr is not None:
+            st.dataframe(df_corr)
 
 
 def page_model():
-    st.header("违约预测模型（逻辑回归）")
+    st.header("违约预测模型 (LASSO-Logistic)")
 
-    st.markdown(
-        """
-        ### 1. 模型思路
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("ROC 曲线")
+        show_image(RESULTS_PREDICTION_MODEL_DIR / "lasso_roc_curve.png")
+    with col2:
+        st.subheader("特征重要性")
+        show_image(RESULTS_PREDICTION_MODEL_DIR / "lasso_feature_importance.png")
 
-        - 选用 **逻辑回归模型** 对企业是否违约进行预测；
-        - 自变量为企业的各类特征（营收、支出、毛利润、发票数量、信誉评级等）；
-        - 因变量为是否违约（0/1）；
-        - 输出为 **企业违约概率**，为后续信贷策略提供风险量化依据。
-        """
-    )
-
-    st.markdown("### 2. 模型性能指标与 ROC 曲线")
-    show_image(
-        RESULTS_PREDICTION_MODEL_DIR / "roc_curve.png",
-        caption="违约预测模型 ROC 曲线"
-    )
-
-    show_image(
-        RESULTS_PREDICTION_MODEL_DIR / "probability_distribution.png",
-        caption="企业违约概率分布示意"
-    )
-
-    st.markdown("### 3. 特征重要性与模型系数")
-
-    show_image(
-        RESULTS_PREDICTION_MODEL_DIR / "feature_importance.png",
-        caption="模型中特征重要性排序（示意）"
-    )
-
-    show_image(
-        RESULTS_CORRELATION_ANALYSIS_DIR / "important_variables_comparison.png",
-        caption="部分关键变量重要性对比（示意）"
-    )
-
-    df_coef = load_csv(RESULTS_PREDICTION_MODEL_DIR / "model_coefficients.csv")
+    st.subheader("模型系数表")
+    df_coef = load_csv(RESULTS_PREDICTION_MODEL_DIR / "lasso_model_coefficients.csv")
     if df_coef is not None:
-        st.subheader("3.1 模型系数（节选）")
-        st.dataframe(df_coef.head(20))
-
-    report = load_txt(RESULTS_PREDICTION_MODEL_DIR / "prediction_model_report.txt")
-    if report is not None:
-        st.subheader("3.2 模型评估文字报告（摘要）")
-        with st.expander("展开查看模型评估报告"):
-            st.write(report)
+        st.dataframe(df_coef, use_container_width=True)
 
 
 def page_strategy():
-    st.header("信贷资源分配策略")
+    st.header("💡 信贷资源分配策略 (交互核心)")
 
-    st.markdown(
-        """
-        ### 1. 策略设计思路
+    # 检查数据是否就绪
+    if not (DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv").exists():
+        st.error("请先在左侧侧边栏上传数据文件！")
+        return
 
-        - 根据模型输出的 **违约概率**，评估每家企业的风险水平；
-        - 结合企业 **信誉评级**、贷款额度上限以及总预算约束；
-        - 引入附件 3 的 **利率–客户流失率** 关系，在收益与客户留存之间取得平衡；
-        - 通过优化或规则设定，得到一套 **贷款发放与定价策略**。
-        """
-    )
+    st.markdown("### 1. 设定贷款参数")
 
-    st.markdown("### 2. 策略结果整体可视化")
-    show_image(
-        RESULTS_CORRELATION_ANALYSIS_DIR / "credit_rating_analysis.png",
-        caption="不同信誉评级企业的违约情况与放贷策略示意"
-    )
-
-    show_image(
-        RESULTS_CREDIT_STRATEGY_DIR / "churn_rate_fitting.png",
-        caption="利率与客户流失率关系拟合曲线（示意）"
-    )
-
-    show_image(
-        RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
-        caption="整体信贷资源分配策略可视化（示意）"
-    )
-
-    st.markdown("### 3. 信贷分配结果数据（分层展示）")
-
-    df_alloc = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "credit_allocation_details.csv")
-    if df_alloc is not None:
-        st.subheader("3.1 原始分配结果（节选）")
-        st.dataframe(df_alloc.head(20))
-
-        # 尝试按“评级”列分组（列名可能需要你根据实际数据修改）
-        candidate_rating_cols = ["rating", "信用等级", "评级", "credit_rating"]
-        rating_col = None
-        for c in candidate_rating_cols:
-            if c in df_alloc.columns:
-                rating_col = c
-                break
-
-        if rating_col is not None:
-            st.subheader("3.2 按信誉等级汇总结果（总额统计）")
-
-            # 尝试寻找常见的金额/收益字段
-            sum_cols = [c for c in df_alloc.columns if any(
-                key in c.lower()
-                for key in ["loan", "amount", "额度", "放贷", "credit", "收益", "profit"]
-            )]
-
-            if sum_cols:
-                grouped = df_alloc.groupby(rating_col)[sum_cols].sum()
-                st.dataframe(grouped)
-            else:
-                st.info(
-                    "没有自动识别到金额/收益相关列，请根据你的数据列名手动修改代码中的汇总逻辑。"
-                )
-        else:
-            st.info(
-                # TODO:  没有找到明显代表“信誉评级”的列名（例如rating / 信用等级 / 评级 / credit_rating），请根据你的实际列名修改代码中candidate_rating_cols列表。
-                "没有找到明显代表“信誉评级”的列名（例如 rating / 信用等级 / 评级 / credit_rating），"
-                "请根据你的实际列名修改代码中 candidate_rating_cols 列表。"
+    # === 参数输入表单 ===
+    with st.form("strategy_params"):
+        col1, col2 = st.columns(2)
+        with col1:
+            budget_input = st.number_input(
+                "信贷总预算 (万元)",
+                min_value=1000.0, max_value=1000000.0, value=10000.0, step=100.0,
+                help="银行计划发放贷款的总资金池"
+            )
+            min_loan_input = st.number_input(
+                "单笔贷款最小额度 (万元)",
+                value=10.0, step=5.0
+            )
+            max_loan_input = st.number_input(
+                "单笔贷款最大额度 (万元)",
+                value=100.0, step=10.0
             )
 
-    df_extreme = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "extreme_probability_companies.csv")
-    if df_extreme is not None:
-        st.subheader("3.3 极端违约概率企业（节选）")
-        st.dataframe(df_extreme.head(20))
-
-    st.markdown("### 4. 简单交互：违约概率阈值 & 放贷规模（演示）")
-
-    df_prob = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "all_companies_default_probabilities.csv")
-    if df_prob is not None:
-        # 尝试找到违约概率、贷款金额字段
-        prob_col_candidates = ["default_prob", "违约概率", "prob_default", "p_default"]
-        loan_col_candidates = ["loan_amount", "贷款额度", "credit_amount", "amount"]
-
-        prob_col = None
-        for c in prob_col_candidates:
-            if c in df_prob.columns:
-                prob_col = c
-                break
-
-        loan_col = None
-        for c in loan_col_candidates:
-            if c in df_prob.columns:
-                loan_col = c
-                break
-
-        if prob_col is not None:
-            st.write("你可以通过调整违约概率阈值，感受“风险控制”与“放贷规模”的变化：")
-            thr = st.slider(
-                "违约概率阈值（低于该值视为可放贷）",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.5,
-                step=0.01,
+        with col2:
+            st.write(" **利率范围设置 (小数)**")
+            min_rate_input = st.number_input(
+                "年利率下限 (例如 0.04 代表 4%)",
+                min_value=0.01, max_value=0.20, value=0.04, step=0.005, format="%.3f"
+            )
+            max_rate_input = st.number_input(
+                "年利率上限 (例如 0.15 代表 15%)",
+                min_value=0.01, max_value=0.30, value=0.15, step=0.005, format="%.3f"
             )
 
-            lend_df = df_prob[df_prob[prob_col] <= thr]
+        submit_btn = st.form_submit_button("🚀 运行模型并生成策略", type="primary")
 
-            st.write(f"在当前阈值下，可放贷企业数量：**{len(lend_df)}**")
+    # === 运行逻辑 ===
+    if submit_btn:
+        with st.spinner("正在调用 R 脚本进行计算... (可能需要几秒钟)"):
+            success = run_r_script(
+                budget=budget_input,
+                min_loan=min_loan_input,
+                max_loan=max_loan_input,
+                min_rate=min_rate_input,
+                max_rate=max_rate_input
+            )
 
-            if loan_col is not None:
-                total_loan = lend_df[loan_col].sum()
-                st.write(f"对应总放贷额度：**{total_loan:,.2f}**")
-            else:
-                st.info("未识别到贷款额度字段，仅展示企业数量。")
+            if success:
+                # 强制刷新页面以重新加载图片和数据 (Streamlit 新版方法)
+                # 如果是旧版 Streamlit 可以尝试 st.experimental_rerun()
+                try:
+                    st.rerun()
+                except AttributeError:
+                    st.experimental_rerun()
 
-            st.caption("下表为当前阈值下部分可放贷企业（前 20 行）：")
-            st.dataframe(lend_df.head(20))
+    st.markdown("---")
+
+    # === 结果展示区域 ===
+    st.markdown("### 2. 策略可视化结果")
+
+    # 使用 Tabs 组织结果，避免页面过长
+    tab1, tab2, tab3 = st.tabs(["📊 策略图表", "📋 详细清单", "📑 决策报告"])
+
+    with tab1:
+        st.caption("左图：流失率拟合；右图：最终分配策略可视化")
+        c1, c2 = st.columns(2)
+        with c1:
+            show_image(RESULTS_CREDIT_STRATEGY_DIR / "churn_rate_fitting.png", "利率-流失率拟合")
+        with c2:
+            show_image(RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png", "信贷分配策略概览")
+
+    with tab2:
+        st.subheader("获贷企业名单")
+        df_alloc = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "credit_allocation_details.csv")
+        if df_alloc is not None:
+            # 简单指标卡
+            total_loan = df_alloc['实际贷款额度'].sum()
+            total_profit = df_alloc['实际期望收益'].sum()
+            count = len(df_alloc)
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("放贷企业数", f"{count} 家")
+            m2.metric("总放贷金额", f"{total_loan:,.2f} 万元")
+            m3.metric("总预期收益", f"{total_profit:,.2f} 万元")
+
+            st.dataframe(df_alloc, use_container_width=True)
         else:
-            # TODO: 未识别到贷款额度字段，仅展示企业数量。
-            st.info("未识别到违约概率字段（例如 default_prob / 违约概率），请根据实际数据修改 prob_col_candidates。")
+            st.info("暂无结果，请点击上方按钮运行模型。")
 
-    report = load_txt(RESULTS_CREDIT_STRATEGY_DIR / "credit_strategy_report.txt")
-    if report is not None:
-        st.subheader("5. 策略效果分析报告（摘要）")
-        with st.expander("展开查看信贷策略评估报告"):
-            st.write(report)
+    with tab3:
+        report_text = load_txt(RESULTS_CREDIT_STRATEGY_DIR / "credit_strategy_report.txt")
+        if report_text:
+            st.text_area("策略报告全文", report_text, height=400)
+        else:
+            st.info("暂无报告。")
 
 
 def page_summary():
     st.header("总结与展望")
-
+    st.success("本项目成功构建了从数据预处理到自动化信贷决策的完整流程。")
     st.markdown(
         """
-        ### 1. 主要工作回顾
-
-        1. **数据预处理与特征构造**  
-           - 从发票数据与企业信息出发，构造了总营收、总支出、毛利润、运营规模等企业级指标；
-           - 合并信誉评级与违约标签，得到建模所需的数据集。
-
-        2. **相关性分析与特征筛选**  
-           - 通过相关性分析与统计检验，识别出与违约关系密切的关键变量；
-           - 为模型输入特征的选择提供了依据。
-
-        3. **违约预测模型构建**  
-           - 使用逻辑回归模型估计企业违约概率；
-           - 在验证集上取得了较好的区分能力（通过 ROC 曲线、AUC 等指标进行评估）。
-
-        4. **信贷资源分配策略设计**  
-           - 将预测的违约概率与企业信誉评级、预算约束结合；
-           - 引入利率–流失率关系，设计在收益与风险之间折衷的信贷决策方案。
+        ### 核心产出
+        1.  **风险量化**：基于 LASSO-Logistic 回归，准确识别了信誉评级、进项/销项发票金额等关键风险因子。
+        2.  **动态定价**：拟合了利率与流失率的关系，实现了基于风险的差异化定价。
+        3.  **系统集成**：通过 Streamlit + R 的混合架构，使得复杂的统计模型可以直接被业务人员使用。
         """
     )
-
-    st.markdown(
-        """
-        ### 2. 关键发现
-
-        - 信誉评级对违约概率具有显著影响，是最重要的风险因子之一；
-        - 部分财务指标（如总营收、毛利润）与违约风险呈显著负相关；
-        - 在合理设定违约阈值与利率的情况下，可以在控制总体违约率的前提下，显著提升预期收益。
-        """
-    )
-
-    st.markdown(
-        """
-        ### 3. 后续改进方向
-
-        - 尝试引入更多模型：如随机森林、XGBoost 等，对比不同模型性能；
-        - 增加行业特征、宏观经济指标等，提升模型的稳定性与可解释性；
-        - 考虑时间维度，构建动态更新的风险监测与信贷策略调整机制；
-        - 将模型部署到业务系统中，实现自动化、可视化的风控决策支持。
-        """
-    )
-
-    st.success("感谢观看！欢迎老师和同学提出宝贵意见与建议。")
 
 
 # =============== 主程序入口 ===============
 
 def main():
     st.set_page_config(
-        page_title="中小微企业信贷决策分析与建模",
+        page_title="中小微企业信贷决策系统",
+        page_icon="🏦",
         layout="wide"
     )
 
-    st.sidebar.title("页面导航")
+    # === 侧边栏：全局数据控制 ===
+    st.sidebar.title("🏦 银行信贷系统")
+    st.sidebar.info("统计分析与建模课程大作业")
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📥 第一步：导入数据")
+
+    uploaded_file = st.sidebar.file_uploader(
+        "上传 'processed_company_data_with_credit.csv'",
+        type=["csv"]
+    )
+
+    if uploaded_file is not None:
+        # 保存文件到指定目录
+        target_path = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
+        try:
+            with open(target_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.sidebar.success("数据已更新！")
+        except Exception as e:
+            st.sidebar.error(f"保存失败: {e}")
+
+    st.sidebar.markdown("---")
+
+    # 导航菜单
     page = st.sidebar.radio(
-        "请选择要查看的内容：",
+        "功能导航",
         (
             "项目概览",
-            "数据与预处理",
+            "数据查看",
             "相关性分析",
             "违约预测模型",
             "信贷资源分配策略",
@@ -444,14 +359,10 @@ def main():
         )
     )
 
-    st.sidebar.markdown("---")
-
-    # TODO: 写上名字学号
-    st.sidebar.write("作者：回头填上\n\n课程：统计分析与建模\n")
-
+    # 页面路由
     if page == "项目概览":
         page_overview()
-    elif page == "数据与预处理":
+    elif page == "数据查看":
         page_data_preprocess()
     elif page == "相关性分析":
         page_correlation()
