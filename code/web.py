@@ -51,11 +51,20 @@ def load_txt(path: Path):
     """读取 TXT 报告。"""
     if not path.exists():
         return None
+    # try:
+    #     return path.read_text(encoding="gbk", errors="ignore")  # R脚本输出通常是GBK
+    # except:
+    #     return path.read_text(encoding="utf-8", errors="ignore")
     try:
-        return path.read_text(encoding="gbk", errors="ignore")  # R脚本输出通常是GBK
-    except:
-        return path.read_text(encoding="utf-8", errors="ignore")
-
+        # 先尝试 UTF-8
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            # 尝试 GBK
+            return path.read_text(encoding="gbk")
+        except Exception:
+            # 最后尝试忽略错误读取
+            return path.read_text(encoding="utf-8", errors="ignore")
 
 def show_image(path: Path, caption: str = "", use_container_width=True):
     """显示图片。"""
