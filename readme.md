@@ -1,5 +1,5 @@
 ## web运行方式：
-- 在根目录下 输入python -m streamlit run .\web\web.py
+- 在根目录下 输入python -m streamlit run .\code\web.py
    
 
 - 如果没安装streamlit, 输入  
