@@ -1,0 +1,387 @@
+import streamlit as st
+import pandas as pd
+from pathlib import Path
+import subprocess
+import os
+import shutil
+
+# === 路径配置 ===
+# 当前文件所在的目录
+CURRENT_DIR = Path(__file__).resolve().parent
+# 项目根目录
+ROOT_DIR = CURRENT_DIR.parent
+
+# 数据目录配置 (必须与 R 脚本中的路径一致)
+DATA_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+RESULTS_DIR = ROOT_DIR / "results"
+RESULTS_CORRELATION_ANALYSIS_DIR = RESULTS_DIR / "correlation_analysis"
+RESULTS_CREDIT_STRATEGY_DIR = RESULTS_DIR / "credit_strategy"
+RESULTS_PREDICTION_MODEL_DIR = RESULTS_DIR / "prediction_model"
+
+# R 脚本路径
+R_SCRIPT_PATH = ROOT_DIR / "code" / "04_strategy_model.R"  # 假设 R 脚本在根目录
+
+# 确保目录存在
+DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_CREDIT_STRATEGY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# =============== 通用工具函数 ===============
+
+def load_csv(path: Path):
+    """读取 CSV 文件，支持多种编码。"""
+    if not path.exists():
+        return None
+
+    encodings_to_try = ["gbk", "utf-8", "utf-8-sig", "gb2312"]
+    for enc in encodings_to_try:
+        try:
+            df = pd.read_csv(path, encoding=enc)
+            return df
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            st.error(f"读取文件错误: {e}")
+            return None
+    st.error(f"无法读取文件 {path.name}，请检查编码格式。")
+    return None
+
+
+def load_txt(path: Path):
+    """读取 TXT 报告。"""
+    if not path.exists():
+        return None
+    # try:
+    #     return path.read_text(encoding="gbk", errors="ignore")  # R脚本输出通常是GBK
+    # except:
+    #     return path.read_text(encoding="utf-8", errors="ignore")
+    try:
+        # 先尝试 UTF-8
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            # 尝试 GBK
+            return path.read_text(encoding="gbk")
+        except Exception:
+            # 最后尝试忽略错误读取
+            return path.read_text(encoding="utf-8", errors="ignore")
+
+def show_image(path: Path, caption: str = "", use_container_width=True):
+    """显示图片。"""
+    if not path.exists():
+        st.warning(f"图片尚未生成或找不到：{path.name}")
+        return
+    st.image(str(path), caption=caption, use_container_width=use_container_width)
+
+
+def run_r_script(budget, min_loan, max_loan, min_rate, max_rate):
+    """
+    调用 R 脚本执行策略模型。
+    """
+    # 检查 R 脚本是否存在
+    if not R_SCRIPT_PATH.exists():
+        st.error(f"找不到 R 脚本文件：{R_SCRIPT_PATH}")
+        return False
+
+    # 构建命令
+    # Rscript 04_strategy_model.R --budget 10000 --min_loan 10 ...
+    cmd = [
+        "Rscript",
+        str(R_SCRIPT_PATH),
+        "--budget", str(budget),
+        "--min_loan", str(min_loan),
+        "--max_loan", str(max_loan),
+        "--min_rate", str(min_rate),
+        "--max_rate", str(max_rate)
+    ]
+
+    try:
+        # 运行命令，捕获输出
+        result = subprocess.run(
+            cmd,
+            cwd=str(ROOT_DIR),  # 设置工作目录为项目根目录，确保 R 脚本内的相对路径正确
+            capture_output=True,
+            text=True,
+            encoding='utf-8'  # 尝试用 utf-8 捕获输出，如果 R 输出是 GBK 可能会乱码，但不影响执行
+        )
+
+        if result.returncode == 0:
+            st.toast("模型运行成功！结果已更新。", icon="✅")
+            # 可以在这里打印 R 的标准输出用于调试
+            # with st.expander("查看 R 脚本运行日志"):
+            #     st.code(result.stdout)
+            return True
+        else:
+            st.error("R 脚本运行失败。")
+            with st.expander("查看错误日志"):
+                st.code(result.stderr)
+            return False
+
+    except FileNotFoundError:
+        st.error(
+            "无法执行 'Rscript' 命令。请确保您的电脑上已安装 R 语言，并将 R 的 bin 目录添加到了系统环境变量 PATH 中。")
+        return False
+    except Exception as e:
+        st.error(f"运行发生未知错误: {e}")
+        return False
+
+
+# =============== 页面内容函数 ===============
+
+def page_overview():
+    st.title("中小微企业信贷决策分析与建模")
+    st.markdown("---")
+    st.info("👋 欢迎使用！请先在左侧侧边栏上传最新的企业数据文件。")
+
+    st.markdown(
+        """
+        ### 一、系统功能
+        本系统旨在辅助银行进行信贷决策，主要功能包括：
+        1.  **数据集成**：导入企业预处理后的数据。
+        2.  **参数仿真**：自定义信贷预算、利率范围及单笔限额。
+        3.  **自动建模**：后台调用 R 语言模型进行风险预测与资源分配。
+        4.  **可视决策**：直观展示策略结果与收益预期。
+
+        ### 二、操作流程
+        1.  **上传数据**：在左侧侧边栏上传 `processed_company_data_with_credit.csv`。
+        2.  **配置参数**：进入“信贷资源分配策略”页面，输入业务约束条件。
+        3.  **运行模型**：点击运行按钮，等待模型计算。
+        4.  **查看报告**：查看最新的可视化图表和策略报表。
+        """
+    )
+    show_image(
+        RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
+        caption="系统流程示意图"
+    )
+
+
+def page_data_preprocess():
+    st.header("数据与预处理概览")
+    st.markdown("此处展示当前系统中已加载的数据情况。")
+
+    # 检查文件是否存在
+    target_file = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
+
+    if target_file.exists():
+        st.success(f"✅ 当前已存在数据文件：`{target_file.name}`")
+        df = load_csv(target_file)
+        if df is not None:
+            st.write(f"**数据规模**：共 {len(df)} 家企业，{len(df.columns)} 个特征。")
+            st.dataframe(df.head(10))
+    else:
+        st.warning("⚠️ 系统中暂无数据文件，请在左侧侧边栏上传。")
+
+
+def page_correlation():
+    st.header("相关性分析")
+    st.markdown("基于历史数据生成的静态分析结果。")
+
+    tabs = st.tabs(["热力图", "相关性排行", "详细数据"])
+
+    with tabs[0]:
+        show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "comprehensive_correlation_heatmap.png")
+
+    with tabs[1]:
+        show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "default_correlation_bars.png")
+
+    with tabs[2]:
+        df_corr = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "detailed_correlation_results.csv")
+        if df_corr is not None:
+            st.dataframe(df_corr)
+
+
+def page_model():
+    st.header("违约预测模型 (LASSO-Logistic)")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("ROC 曲线")
+        show_image(RESULTS_PREDICTION_MODEL_DIR / "lasso_roc_curve.png")
+    with col2:
+        st.subheader("特征重要性")
+        show_image(RESULTS_PREDICTION_MODEL_DIR / "lasso_feature_importance.png")
+
+    st.subheader("模型系数表")
+    df_coef = load_csv(RESULTS_PREDICTION_MODEL_DIR / "lasso_model_coefficients.csv")
+    if df_coef is not None:
+        st.dataframe(df_coef, use_container_width=True)
+
+
+def page_strategy():
+    st.header("💡 信贷资源分配策略 (交互核心)")
+
+    # 检查数据是否就绪
+    if not (DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv").exists():
+        st.error("请先在左侧侧边栏上传数据文件！")
+        return
+
+    st.markdown("### 1. 设定贷款参数")
+
+    # === 参数输入表单 ===
+    with st.form("strategy_params"):
+        col1, col2 = st.columns(2)
+        with col1:
+            budget_input = st.number_input(
+                "信贷总预算 (万元)",
+                min_value=1000.0, max_value=1000000.0, value=10000.0, step=100.0,
+                help="银行计划发放贷款的总资金池"
+            )
+            min_loan_input = st.number_input(
+                "单笔贷款最小额度 (万元)",
+                value=10.0, step=5.0
+            )
+            max_loan_input = st.number_input(
+                "单笔贷款最大额度 (万元)",
+                value=100.0, step=10.0
+            )
+
+        with col2:
+            st.write(" **利率范围设置 (小数)**")
+            min_rate_input = st.number_input(
+                "年利率下限 (例如 0.04 代表 4%)",
+                min_value=0.01, max_value=0.20, value=0.04, step=0.005, format="%.3f"
+            )
+            max_rate_input = st.number_input(
+                "年利率上限 (例如 0.15 代表 15%)",
+                min_value=0.01, max_value=0.30, value=0.15, step=0.005, format="%.3f"
+            )
+
+        submit_btn = st.form_submit_button("🚀 运行模型并生成策略", type="primary")
+
+    # === 运行逻辑 ===
+    if submit_btn:
+        with st.spinner("正在调用 R 脚本进行计算... (可能需要几秒钟)"):
+            success = run_r_script(
+                budget=budget_input,
+                min_loan=min_loan_input,
+                max_loan=max_loan_input,
+                min_rate=min_rate_input,
+                max_rate=max_rate_input
+            )
+
+            if success:
+                # 强制刷新页面以重新加载图片和数据 (Streamlit 新版方法)
+                # 如果是旧版 Streamlit 可以尝试 st.experimental_rerun()
+                try:
+                    st.rerun()
+                except AttributeError:
+                    st.experimental_rerun()
+
+    st.markdown("---")
+
+    # === 结果展示区域 ===
+    st.markdown("### 2. 策略可视化结果")
+
+    # 使用 Tabs 组织结果，避免页面过长
+    tab1, tab2, tab3 = st.tabs(["📊 策略图表", "📋 详细清单", "📑 决策报告"])
+
+    with tab1:
+        st.caption("左图：流失率拟合；右图：最终分配策略可视化")
+        c1, c2 = st.columns(2)
+        with c1:
+            show_image(RESULTS_CREDIT_STRATEGY_DIR / "churn_rate_fitting.png", "利率-流失率拟合")
+        with c2:
+            show_image(RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png", "信贷分配策略概览")
+
+    with tab2:
+        st.subheader("获贷企业名单")
+        df_alloc = load_csv(RESULTS_CREDIT_STRATEGY_DIR / "credit_allocation_details.csv")
+        if df_alloc is not None:
+            # 简单指标卡
+            total_loan = df_alloc['实际贷款额度'].sum()
+            total_profit = df_alloc['实际期望收益'].sum()
+            count = len(df_alloc)
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("放贷企业数", f"{count} 家")
+            m2.metric("总放贷金额", f"{total_loan:,.2f} 万元")
+            m3.metric("总预期收益", f"{total_profit:,.2f} 万元")
+
+            st.dataframe(df_alloc, use_container_width=True)
+        else:
+            st.info("暂无结果，请点击上方按钮运行模型。")
+
+    with tab3:
+        report_text = load_txt(RESULTS_CREDIT_STRATEGY_DIR / "credit_strategy_report.txt")
+        if report_text:
+            st.text_area("策略报告全文", report_text, height=400)
+        else:
+            st.info("暂无报告。")
+
+
+def page_summary():
+    st.header("总结与展望")
+    st.success("本项目成功构建了从数据预处理到自动化信贷决策的完整流程。")
+    st.markdown(
+        """
+        ### 核心产出
+        1.  **风险量化**：基于 LASSO-Logistic 回归，准确识别了信誉评级、进项/销项发票金额等关键风险因子。
+        2.  **动态定价**：拟合了利率与流失率的关系，实现了基于风险的差异化定价。
+        3.  **系统集成**：通过 Streamlit + R 的混合架构，使得复杂的统计模型可以直接被业务人员使用。
+        """
+    )
+
+
+# =============== 主程序入口 ===============
+
+def main():
+    st.set_page_config(
+        page_title="中小微企业信贷决策系统",
+        page_icon="🏦",
+        layout="wide"
+    )
+
+    # === 侧边栏：全局数据控制 ===
+    st.sidebar.title("🏦 银行信贷系统")
+    st.sidebar.info("统计分析与建模课程大作业")
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📥 第一步：导入数据")
+
+    uploaded_file = st.sidebar.file_uploader(
+        "上传 'processed_company_data_with_credit.csv'",
+        type=["csv"]
+    )
+
+    if uploaded_file is not None:
+        # 保存文件到指定目录
+        target_path = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
+        try:
+            with open(target_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.sidebar.success("数据已更新！")
+        except Exception as e:
+            st.sidebar.error(f"保存失败: {e}")
+
+    st.sidebar.markdown("---")
+
+    # 导航菜单
+    page = st.sidebar.radio(
+        "功能导航",
+        (
+            "项目概览",
+            "数据查看",
+            "相关性分析",
+            "违约预测模型",
+            "信贷资源分配策略",
+            "总结与展望",
+        )
+    )
+
+    # 页面路由
+    if page == "项目概览":
+        page_overview()
+    elif page == "数据查看":
+        page_data_preprocess()
+    elif page == "相关性分析":
+        page_correlation()
+    elif page == "违约预测模型":
+        page_model()
+    elif page == "信贷资源分配策略":
+        page_strategy()
+    elif page == "总结与展望":
+        page_summary()
+
+
+if __name__ == "__main__":
+    main()
