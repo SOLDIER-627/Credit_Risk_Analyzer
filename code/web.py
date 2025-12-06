@@ -131,27 +131,12 @@ def run_r_script(budget, min_loan, max_loan, min_rate, max_rate):
 def page_overview():
     st.title("中小微企业信贷决策分析与建模")
     st.markdown("---")
-    st.info("👋 欢迎使用！请先在左侧侧边栏上传最新的企业数据文件。")
+    st.info("👋 欢迎使用！请先在左侧侧边栏上传包含企业信贷数据的 CSV 文件，然后按导航顺序体验各功能。")
 
     st.markdown(
         """
-        ### 一、系统功能
-        本系统旨在辅助银行进行信贷决策，主要功能包括：
-        1.  **数据集成**：导入企业预处理后的数据。
-        2.  **参数仿真**：自定义信贷预算、利率范围及单笔限额。
-        3.  **自动建模**：后台调用 R 语言模型进行风险预测与资源分配。
-        4.  **可视决策**：直观展示策略结果与收益预期。
-
-        ### 二、操作流程
-        1.  **上传数据**：在左侧侧边栏上传 `processed_company_data_with_credit.csv`。
-        2.  **配置参数**：进入“信贷资源分配策略”页面，输入业务约束条件。
-        3.  **运行模型**：点击运行按钮，等待模型计算。
-        4.  **查看报告**：查看最新的可视化图表和策略报表。
+        本应用聚合了数据查看、相关性分析、违约预测与信贷资源分配等核心能力，帮助银行快速完成从数据到策略的闭环决策。上传数据后，可在左侧导航进入相应页面查看结果或进行交互式策略仿真。
         """
-    )
-    show_image(
-        RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
-        caption="系统流程示意图"
     )
 
 
@@ -168,6 +153,11 @@ def page_data_preprocess():
         if df is not None:
             st.write(f"**数据规模**：共 {len(df)} 家企业，{len(df.columns)} 个特征。")
             st.dataframe(df.head(10))
+            st.caption("已成功导入数据，以下为示例分析图：")
+            show_image(
+                RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
+                caption="信贷策略示意图"
+            )
     else:
         st.warning("⚠️ 系统中暂无数据文件，请在左侧侧边栏上传。")
 
@@ -309,19 +299,6 @@ def page_strategy():
             st.info("暂无报告。")
 
 
-def page_summary():
-    st.header("总结与展望")
-    st.success("本项目成功构建了从数据预处理到自动化信贷决策的完整流程。")
-    st.markdown(
-        """
-        ### 核心产出
-        1.  **风险量化**：基于 LASSO-Logistic 回归，准确识别了信誉评级、进项/销项发票金额等关键风险因子。
-        2.  **动态定价**：拟合了利率与流失率的关系，实现了基于风险的差异化定价。
-        3.  **系统集成**：通过 Streamlit + R 的混合架构，使得复杂的统计模型可以直接被业务人员使用。
-        """
-    )
-
-
 # =============== 主程序入口 ===============
 
 def main():
@@ -339,7 +316,7 @@ def main():
     st.sidebar.subheader("📥 第一步：导入数据")
 
     uploaded_file = st.sidebar.file_uploader(
-        "上传 'processed_company_data_with_credit.csv'",
+        "上传包含企业信贷数据的 CSV 文件",
         type=["csv"]
     )
 
@@ -364,7 +341,6 @@ def main():
             "相关性分析",
             "违约预测模型",
             "信贷资源分配策略",
-            "总结与展望",
         )
     )
 
@@ -379,8 +355,6 @@ def main():
         page_model()
     elif page == "信贷资源分配策略":
         page_strategy()
-    elif page == "总结与展望":
-        page_summary()
 
 
 if __name__ == "__main__":
