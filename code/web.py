@@ -13,6 +13,7 @@ ROOT_DIR = CURRENT_DIR.parent
 
 # 数据目录配置 (必须与 R 脚本中的路径一致)
 DATA_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+DATA_RAW_DIR = ROOT_DIR / "data" / "raw"
 RESULTS_DIR = ROOT_DIR / "results"
 RESULTS_CORRELATION_ANALYSIS_DIR = RESULTS_DIR / "correlation_analysis"
 RESULTS_CREDIT_STRATEGY_DIR = RESULTS_DIR / "credit_strategy"
@@ -131,7 +132,7 @@ def run_r_script(budget, min_loan, max_loan, min_rate, max_rate):
 def page_overview():
     st.title("中小微企业信贷决策分析与建模")
     st.markdown("---")
-    st.info("👋 欢迎使用！请先在左侧侧边栏上传包含企业信贷数据的 CSV 文件，然后按导航顺序体验各功能。")
+    st.info("👋 欢迎使用！请先在左侧侧边栏上传包含企业信贷数据的 CSV 或 Excel 文件，然后按导航顺序体验各功能。")
 
     st.markdown(
         """
@@ -144,15 +145,20 @@ def page_data_preprocess():
     st.header("数据与预处理概览")
     st.markdown("此处展示当前系统中已加载的数据情况。")
 
-    # 检查文件是否存在
-    target_file = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
-
-    if target_file.exists():
+    # 检查是否有上传的文件
+    uploaded_files = list(DATA_PROCESSED_DIR.glob("*.csv"))
+    
+    if uploaded_files:
+        # 使用最新的文件
+        target_file = max(uploaded_files, key=os.path.getctime)
         st.success(f"✅ 当前已存在数据文件：`{target_file.name}`")
         df = load_csv(target_file)
         if df is not None:
             st.write(f"**数据规模**：共 {len(df)} 家企业，{len(df.columns)} 个特征。")
-            st.dataframe(df.head(10))
+            
+            # 显示完整数据表
+            st.dataframe(df, height=500, use_container_width=True)
+                
             st.caption("已成功导入数据，以下为示例分析图：")
             show_image(
                 RESULTS_CREDIT_STRATEGY_DIR / "strategy_visualization.png",
@@ -166,7 +172,14 @@ def page_correlation():
     st.header("相关性分析")
     st.markdown("基于历史数据生成的静态分析结果。")
 
-    tabs = st.tabs(["热力图", "相关性排行", "详细数据"])
+    # 检查是否有上传的文件
+    uploaded_files = list(DATA_PROCESSED_DIR.glob("*.csv"))
+    
+    if not uploaded_files:
+        st.error("请先在左侧侧边栏上传数据文件！")
+        return
+
+    tabs = st.tabs(["热力图", "相关性排行", "详细数据", "箱线图"])
 
     with tabs[0]:
         show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "comprehensive_correlation_heatmap.png")
@@ -178,10 +191,20 @@ def page_correlation():
         df_corr = load_csv(RESULTS_CORRELATION_ANALYSIS_DIR / "detailed_correlation_results.csv")
         if df_corr is not None:
             st.dataframe(df_corr)
+            
+    with tabs[3]:
+        show_image(RESULTS_CORRELATION_ANALYSIS_DIR / "important_variables_comparison.png")
 
 
 def page_model():
     st.header("违约预测模型 (LASSO-Logistic)")
+
+    # 检查是否有上传的文件
+    uploaded_files = list(DATA_PROCESSED_DIR.glob("*.csv"))
+    
+    if not uploaded_files:
+        st.error("请先在左侧侧边栏上传数据文件！")
+        return
 
     col1, col2 = st.columns(2)
     with col1:
@@ -200,8 +223,10 @@ def page_model():
 def page_strategy():
     st.header("💡 信贷资源分配策略 (交互核心)")
 
-    # 检查数据是否就绪
-    if not (DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv").exists():
+    # 检查是否有上传的文件
+    uploaded_files = list(DATA_PROCESSED_DIR.glob("*.csv"))
+    
+    if not uploaded_files:
         st.error("请先在左侧侧边栏上传数据文件！")
         return
 
@@ -308,6 +333,10 @@ def main():
         layout="wide"
     )
 
+    # 初始化会话状态，用于跟踪用户是否已上传文件
+    if 'file_uploaded' not in st.session_state:
+        st.session_state.file_uploaded = False
+
     # === 侧边栏：全局数据控制 ===
     st.sidebar.title("🏦 银行信贷系统")
     st.sidebar.info("统计分析与建模课程大作业")
@@ -316,33 +345,46 @@ def main():
     st.sidebar.subheader("📥 第一步：导入数据")
 
     uploaded_file = st.sidebar.file_uploader(
-        "上传包含企业信贷数据的 CSV 文件",
-        type=["csv"]
+        "上传包含企业信贷数据的 CSV 或 Excel 文件",
+        type=["csv", "xlsx"]
     )
 
     if uploaded_file is not None:
-        # 保存文件到指定目录
-        target_path = DATA_PROCESSED_DIR / "processed_company_data_with_credit.csv"
+        # 所有上传文件都保存到raw目录
+        target_path = DATA_RAW_DIR / uploaded_file.name
+        target_display_name = f"data/raw/{uploaded_file.name}"
+        
         try:
             with open(target_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.sidebar.success("数据已更新！")
+            st.sidebar.success(f"数据已导入: {target_display_name}，处理好的数据存放在processed/processed_company_data_with_credit.csv")
+            # 标记用户已完成文件上传
+            st.session_state.file_uploaded = True
         except Exception as e:
             st.sidebar.error(f"保存失败: {e}")
 
     st.sidebar.markdown("---")
 
-    # 导航菜单
-    page = st.sidebar.radio(
-        "功能导航",
-        (
-            "项目概览",
-            "数据查看",
-            "相关性分析",
-            "违约预测模型",
-            "信贷资源分配策略",
+    # 检查用户是否已完成文件上传操作来决定显示哪些功能
+    if not st.session_state.file_uploaded:
+        # 用户未上传文件时，只显示项目概览
+        page = "项目概览"
+        st.sidebar.radio(
+            "功能导航",
+            ["项目概览"]
         )
-    )
+    else:
+        # 用户已上传文件时，显示所有功能
+        page = st.sidebar.radio(
+            "功能导航",
+            [
+                "项目概览",
+                "数据查看",
+                "相关性分析",
+                "违约预测模型",
+                "信贷资源分配策略",
+            ]
+        )
 
     # 页面路由
     if page == "项目概览":
