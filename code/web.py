@@ -350,18 +350,10 @@ def main():
     )
 
     if uploaded_file is not None:
-        # 所有上传文件都保存到raw目录
-        target_path = DATA_RAW_DIR / uploaded_file.name
-        target_display_name = f"data/raw/{uploaded_file.name}"
-        
-        try:
-            with open(target_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.sidebar.success(f"数据已导入: {target_display_name}，处理好的数据存放在processed/processed_company_data_with_credit.csv")
-            # 标记用户已完成文件上传
-            st.session_state.file_uploaded = True
-        except Exception as e:
-            st.sidebar.error(f"保存失败: {e}")
+        # 文件上传仅用于演示交互，不保存到磁盘
+        st.sidebar.success("文件已上传并加载到内存中，可用于演示交互功能")
+        # 标记用户已完成文件上传
+        st.session_state.file_uploaded = True
 
     st.sidebar.markdown("---")
 
